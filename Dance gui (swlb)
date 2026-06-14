@@ -1,0 +1,276 @@
+-- // Universal Assassin Dance GUI (Creates Remotes) - Works on ALL Classes
+-- Put in StarterPlayer > StarterPlayerScripts
+
+local player = game.Players.LocalPlayer
+local dancing = false
+local danceTrack = nil
+local danceConnection = nil
+local currentSpeed = 0.45
+local mainFrameVisible = true
+
+-- Create Main GUI
+local screenGui = Instance.new("ScreenGui")
+screenGui.Name = "UniversalDanceGUI"
+screenGui.ResetOnSpawn = false
+screenGui.Parent = player:WaitForChild("PlayerGui")
+
+local frame = Instance.new("Frame")
+frame.Size = UDim2.new(0, 280, 0, 220)
+frame.Position = UDim2.new(0.5, -140, 0.5, -110)
+frame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
+frame.BorderSizePixel = 0
+frame.Active = true
+frame.Draggable = true
+frame.Parent = screenGui
+
+Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 14)
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 0, 50)
+title.BackgroundTransparency = 1
+title.Text = "Universal Assassin Dance"
+title.TextColor3 = Color3.fromRGB(255, 60, 60)
+title.TextScaled = true
+title.Font = Enum.Font.GothamBold
+title.Parent = frame
+
+local status = Instance.new("TextLabel")
+status.Size = UDim2.new(1, 0, 0, 25)
+status.Position = UDim2.new(0, 0, 0.28, 0)
+status.BackgroundTransparency = 1
+status.Text = "Ready - Remotes Created"
+status.TextColor3 = Color3.fromRGB(160, 160, 160)
+status.TextScaled = true
+status.Font = Enum.Font.Gotham
+status.Parent = frame
+
+-- Speed Editor
+local speedLabel = Instance.new("TextLabel")
+speedLabel.Size = UDim2.new(0.6, 0, 0, 30)
+speedLabel.Position = UDim2.new(0.05, 0, 0.42, 0)
+speedLabel.BackgroundTransparency = 1
+speedLabel.Text = "Dance Speed:"
+speedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+speedLabel.TextXAlignment = Enum.TextXAlignment.Left
+speedLabel.TextScaled = true
+speedLabel.Font = Enum.Font.Gotham
+speedLabel.Parent = frame
+
+local speedBox = Instance.new("TextBox")
+speedBox.Size = UDim2.new(0.3, 0, 0, 30)
+speedBox.Position = UDim2.new(0.65, 0, 0.42, 0)
+speedBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+speedBox.Text = tostring(currentSpeed)
+speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+speedBox.TextScaled = true
+speedBox.Font = Enum.Font.Gotham
+speedBox.Parent = frame
+
+Instance.new("UICorner", speedBox).CornerRadius = UDim.new(0, 6)
+
+speedBox.FocusLost:Connect(function(enterPressed)
+    local num = tonumber(speedBox.Text)
+    if num then
+        currentSpeed = math.clamp(num, -999999999999999999999, 99999999999999999999999999)
+        speedBox.Text = tostring(currentSpeed)
+        
+        if danceTrack and dancing then
+            danceTrack:AdjustSpeed(currentSpeed)
+        end
+    else
+        speedBox.Text = tostring(currentSpeed)
+    end
+end)
+
+local toggleButton = Instance.new("TextButton")
+toggleButton.Size = UDim2.new(0.85, 0, 0, 65)
+toggleButton.Position = UDim2.new(0.075, 0, 0.58, 0)
+toggleButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+toggleButton.Text = "OFF"
+toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
+toggleButton.TextScaled = true
+toggleButton.Font = Enum.Font.GothamBold
+toggleButton.Parent = frame
+
+Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(0, 10)
+
+-- Minimize Button
+local minimizeBtn = Instance.new("TextButton")
+minimizeBtn.Size = UDim2.new(0, 35, 0, 35)
+minimizeBtn.Position = UDim2.new(1, -80, 0, 7)
+minimizeBtn.BackgroundTransparency = 1
+minimizeBtn.Text = "−"
+minimizeBtn.TextColor3 = Color3.fromRGB(255, 200, 100)
+minimizeBtn.TextScaled = true
+minimizeBtn.Font = Enum.Font.GothamBold
+minimizeBtn.Parent = frame
+
+-- Close Button
+local closeBtn = Instance.new("TextButton")
+closeBtn.Size = UDim2.new(0, 35, 0, 35)
+closeBtn.Position = UDim2.new(1, -40, 0, 7)
+closeBtn.BackgroundTransparency = 1
+closeBtn.Text = "✕"
+closeBtn.TextColor3 = Color3.fromRGB(255, 80, 80)
+closeBtn.TextScaled = true
+closeBtn.Font = Enum.Font.GothamBold
+closeBtn.Parent = frame
+
+-- Small minimized GUI
+local miniButton = Instance.new("TextButton")
+miniButton.Size = UDim2.new(0, 60, 0, 60)
+miniButton.Position = UDim2.new(0.5, -30, 0.1, 0)
+miniButton.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+miniButton.Text = "dance GUI"
+miniButton.TextScaled = true
+miniButton.Font = Enum.Font.GothamBold
+miniButton.Visible = false
+miniButton.Parent = screenGui
+
+Instance.new("UICorner", miniButton).CornerRadius = UDim.new(1, 0)
+
+-- Function to get or CREATE Dance Remotes
+local function getOrCreateRemotes()
+    local char = player.Character
+    if not char then return nil, nil end
+    
+    local danceRemote = char:FindFirstChild("Dance")
+    if not danceRemote then
+        danceRemote = Instance.new("RemoteEvent")
+        danceRemote.Name = "Dance"
+        danceRemote.Parent = char
+    end
+    
+    local undanceRemote = char:FindFirstChild("UnDance")
+    if not undanceRemote then
+        undanceRemote = Instance.new("RemoteEvent")
+        undanceRemote.Name = "UnDance"
+        undanceRemote.Parent = char
+    end
+    
+    return danceRemote, undanceRemote
+end
+
+-- Toggle Function
+local function toggleDance()
+    dancing = not dancing
+    local danceRemote, undanceRemote = getOrCreateRemotes()
+    
+    if dancing then
+        if not danceRemote then
+            toggleButton.Text = "ERROR"
+            dancing = false
+            return
+        end
+        
+        toggleButton.Text = "ON"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(0, 190, 0)
+        status.Text = "Dancing... (All Classes)"
+        
+        -- Fire remote for server sync + sound
+        danceRemote:FireServer()
+        
+        -- Load real Assassin Dance animation
+        local char = player.Character
+        local humanoid = char and char:WaitForChild("Humanoid", 2)
+        if humanoid then
+            local success, track = pcall(function()
+                local anim = game.ReplicatedStorage.Animations:WaitForChild("Assassin Dance")
+                return humanoid:LoadAnimation(anim)
+            end)
+            
+            if success and track then
+                danceTrack = track
+                danceTrack:Play()
+                danceTrack.Looped = true
+                danceTrack:AdjustSpeed(currentSpeed)
+            else
+                status.Text = "Animation not found!"
+            end
+        end
+        
+        -- Keep spamming remote
+        if danceConnection then
+            danceConnection:Disconnect()
+        end
+        danceConnection = game:GetService("RunService").Heartbeat:Connect(function()
+            if dancing and danceRemote then
+                danceRemote:FireServer()
+            end
+        end)
+        
+    else
+        toggleButton.Text = "OFF"
+        toggleButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
+        status.Text = "Stopped"
+        
+        if danceConnection then
+            danceConnection:Disconnect()
+            danceConnection = nil
+        end
+        
+        if danceTrack then
+            danceTrack:Stop()
+            danceTrack = nil
+        end
+        
+        if undanceRemote then
+            undanceRemote:FireServer()
+        end
+    end
+end
+
+toggleButton.MouseButton1Click:Connect(toggleDance)
+
+-- Minimize logic
+minimizeBtn.MouseButton1Click:Connect(function()
+    mainFrameVisible = false
+    frame.Visible = false
+    miniButton.Visible = true
+end)
+
+miniButton.MouseButton1Click:Connect(function()
+    mainFrameVisible = true
+    frame.Visible = true
+    miniButton.Visible = false
+end)
+
+closeBtn.MouseButton1Click:Connect(function()
+    screenGui:Destroy()
+end)
+
+-- Respawn handling (improved)
+player.CharacterAdded:Connect(function()
+    task.wait(1.5)
+    local char = player.Character
+    if not char then return end
+    
+    if dancing then
+        -- Re-toggle to restart properly on new character
+        dancing = false
+        if danceConnection then
+            danceConnection:Disconnect()
+            danceConnection = nil
+        end
+        if danceTrack then
+            danceTrack:Stop()
+            danceTrack = nil
+        end
+        task.wait(0.3)
+        toggleDance()  -- turn back on
+    end
+end)
+
+-- Cleanup on character removing
+player.CharacterRemoving:Connect(function()
+    if danceConnection then
+        danceConnection:Disconnect()
+        danceConnection = nil
+    end
+    if danceTrack then
+        danceTrack:Stop()
+        danceTrack = nil
+    end
+end)
+
+print("✅ Universal Assassin Dance GUI Loaded! (Auto creates remotes + Speed Control + Minimize)")
