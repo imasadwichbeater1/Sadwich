@@ -1,28 +1,40 @@
--- // Universal Assassin Dance GUI (Creates Remotes) - Works on ALL Classes
--- Put in StarterPlayer > StarterPlayerScripts
+-- // Universal Assassin Dance GUI + FIXED X Y Z Rotation + IMPROVED FREEZE (TextBox + Mid-Air)
+-- Separate X/Y/Z + Freeze selected axis only (0-100) via number input
 
 local player = game.Players.LocalPlayer
 local dancing = false
 local danceTrack = nil
 local danceConnection = nil
+local rotationConnection = nil
 local currentSpeed = 0.45
-local mainFrameVisible = true
 
--- Create Main GUI
+local rotX = 0      
+local rotY = 0      
+local rotZ = 0      
+
+local freezeSpeed = 30  -- 0-100 controlled via TextBox
+local isRotating = false
+local isFrozen = false
+local selectedAxis = "Y"
+
+local humanoid = nil
+local rootPart = nil
+local accumulatedRot = Vector3.new(0, 0, 0)
+
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "UniversalDanceGUI"
 screenGui.ResetOnSpawn = false
 screenGui.Parent = player:WaitForChild("PlayerGui")
 
+-- Main GUI unchanged
 local frame = Instance.new("Frame")
-frame.Size = UDim2.new(0, 280, 0, 220)
-frame.Position = UDim2.new(0.5, -140, 0.5, -110)
+frame.Size = UDim2.new(0, 280, 0, 280)
+frame.Position = UDim2.new(0.5, -140, 0.5, -140)
 frame.BackgroundColor3 = Color3.fromRGB(18, 18, 18)
 frame.BorderSizePixel = 0
 frame.Active = true
 frame.Draggable = true
 frame.Parent = screenGui
-
 Instance.new("UICorner", frame).CornerRadius = UDim.new(0, 14)
 
 local title = Instance.new("TextLabel")
@@ -36,7 +48,7 @@ title.Parent = frame
 
 local status = Instance.new("TextLabel")
 status.Size = UDim2.new(1, 0, 0, 25)
-status.Position = UDim2.new(0, 0, 0.28, 0)
+status.Position = UDim2.new(0, 0, 0.22, 0)
 status.BackgroundTransparency = 1
 status.Text = "Ready - Remotes Created"
 status.TextColor3 = Color3.fromRGB(160, 160, 160)
@@ -44,10 +56,19 @@ status.TextScaled = true
 status.Font = Enum.Font.Gotham
 status.Parent = frame
 
--- Speed Editor
+local settingsBtn = Instance.new("TextButton")
+settingsBtn.Size = UDim2.new(0, 35, 0, 35)
+settingsBtn.Position = UDim2.new(0, 7, 0, 7)
+settingsBtn.BackgroundTransparency = 1
+settingsBtn.Text = "⚙"
+settingsBtn.TextColor3 = Color3.fromRGB(255, 200, 100)
+settingsBtn.TextScaled = true
+settingsBtn.Font = Enum.Font.GothamBold
+settingsBtn.Parent = frame
+
 local speedLabel = Instance.new("TextLabel")
 speedLabel.Size = UDim2.new(0.6, 0, 0, 30)
-speedLabel.Position = UDim2.new(0.05, 0, 0.42, 0)
+speedLabel.Position = UDim2.new(0.05, 0, 0.38, 0)
 speedLabel.BackgroundTransparency = 1
 speedLabel.Text = "Dance Speed:"
 speedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
@@ -58,43 +79,27 @@ speedLabel.Parent = frame
 
 local speedBox = Instance.new("TextBox")
 speedBox.Size = UDim2.new(0.3, 0, 0, 30)
-speedBox.Position = UDim2.new(0.65, 0, 0.42, 0)
+speedBox.Position = UDim2.new(0.65, 0, 0.38, 0)
 speedBox.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 speedBox.Text = tostring(currentSpeed)
 speedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
 speedBox.TextScaled = true
 speedBox.Font = Enum.Font.Gotham
 speedBox.Parent = frame
-
 Instance.new("UICorner", speedBox).CornerRadius = UDim.new(0, 6)
-
-speedBox.FocusLost:Connect(function(enterPressed)
-    local num = tonumber(speedBox.Text)
-    if num then
-        currentSpeed = math.clamp(num, -999999999999999999999, 99999999999999999999999999)
-        speedBox.Text = tostring(currentSpeed)
-        
-        if danceTrack and dancing then
-            danceTrack:AdjustSpeed(currentSpeed)
-        end
-    else
-        speedBox.Text = tostring(currentSpeed)
-    end
-end)
 
 local toggleButton = Instance.new("TextButton")
 toggleButton.Size = UDim2.new(0.85, 0, 0, 65)
-toggleButton.Position = UDim2.new(0.075, 0, 0.58, 0)
+toggleButton.Position = UDim2.new(0.075, 0, 0.52, 0)
 toggleButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
 toggleButton.Text = "OFF"
 toggleButton.TextColor3 = Color3.fromRGB(255, 255, 255)
 toggleButton.TextScaled = true
 toggleButton.Font = Enum.Font.GothamBold
 toggleButton.Parent = frame
-
 Instance.new("UICorner", toggleButton).CornerRadius = UDim.new(0, 10)
 
--- Minimize Button
+-- Minimize / Close
 local minimizeBtn = Instance.new("TextButton")
 minimizeBtn.Size = UDim2.new(0, 35, 0, 35)
 minimizeBtn.Position = UDim2.new(1, -80, 0, 7)
@@ -105,18 +110,16 @@ minimizeBtn.TextScaled = true
 minimizeBtn.Font = Enum.Font.GothamBold
 minimizeBtn.Parent = frame
 
--- Close Button
 local closeBtn = Instance.new("TextButton")
 closeBtn.Size = UDim2.new(0, 35, 0, 35)
 closeBtn.Position = UDim2.new(1, -40, 0, 7)
 closeBtn.BackgroundTransparency = 1
-closeBtn.Text = "✕"
+closeBtn.Text = "❌"
 closeBtn.TextColor3 = Color3.fromRGB(255, 80, 80)
 closeBtn.TextScaled = true
 closeBtn.Font = Enum.Font.GothamBold
 closeBtn.Parent = frame
 
--- Small minimized GUI
 local miniButton = Instance.new("TextButton")
 miniButton.Size = UDim2.new(0, 60, 0, 60)
 miniButton.Position = UDim2.new(0.5, -30, 0.1, 0)
@@ -126,151 +129,339 @@ miniButton.TextScaled = true
 miniButton.Font = Enum.Font.GothamBold
 miniButton.Visible = false
 miniButton.Parent = screenGui
-
 Instance.new("UICorner", miniButton).CornerRadius = UDim.new(1, 0)
 
--- Function to get or CREATE Dance Remotes
+-- ================== ROTATION GUI ==================
+local rotationGui = Instance.new("ScreenGui")
+rotationGui.Name = "RotationSettingsGUI"
+rotationGui.ResetOnSpawn = false
+rotationGui.Parent = player:WaitForChild("PlayerGui")
+
+local rotFrame = Instance.new("Frame")
+rotFrame.Size = UDim2.new(0, 290, 0, 380)
+rotFrame.Position = UDim2.new(0.6, 0, 0.25, 0)
+rotFrame.BackgroundColor3 = Color3.fromRGB(24, 24, 24)
+rotFrame.BorderSizePixel = 0
+rotFrame.Active = true
+rotFrame.Draggable = true
+rotFrame.Visible = false
+rotFrame.Parent = rotationGui
+Instance.new("UICorner", rotFrame).CornerRadius = UDim.new(0, 12)
+
+local rotTitle = Instance.new("TextLabel")
+rotTitle.Size = UDim2.new(1, 0, 0, 40)
+rotTitle.BackgroundTransparency = 1
+rotTitle.Text = "Rotation Setting (still in progress)"
+rotTitle.TextColor3 = Color3.fromRGB(255, 60, 60)
+rotTitle.TextScaled = true
+rotTitle.Font = Enum.Font.GothamBold
+rotTitle.Parent = rotFrame
+
+local rotToggle = Instance.new("TextButton")
+rotToggle.Size = UDim2.new(0.9, 0, 0, 40)
+rotToggle.Position = UDim2.new(0.05, 0, 0.13, 0)
+rotToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+rotToggle.Text = "Rotation: OFF"
+rotToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+rotToggle.TextScaled = true
+rotToggle.Font = Enum.Font.GothamBold
+rotToggle.Parent = rotFrame
+Instance.new("UICorner", rotToggle).CornerRadius = UDim.new(0, 8)
+
+local freezeToggle = Instance.new("TextButton")
+freezeToggle.Size = UDim2.new(0.9, 0, 0, 40)
+freezeToggle.Position = UDim2.new(0.05, 0, 0.27, 0)
+freezeToggle.BackgroundColor3 = Color3.fromRGB(60, 60, 60)
+freezeToggle.Text = "Freeze Mode: OFF"
+freezeToggle.TextColor3 = Color3.fromRGB(255, 255, 255)
+freezeToggle.TextScaled = true
+freezeToggle.Font = Enum.Font.GothamBold
+freezeToggle.Parent = rotFrame
+Instance.new("UICorner", freezeToggle).CornerRadius = UDim.new(0, 8)
+
+-- Separate X Y Z inputs
+local function createInput(labelText, color, default, yPos)
+    local label = Instance.new("TextLabel")
+    label.Size = UDim2.new(0.5, 0, 0, 30)
+    label.Position = UDim2.new(0.05, 0, yPos, 0)
+    label.BackgroundTransparency = 1
+    label.Text = labelText
+    label.TextColor3 = color
+    label.TextXAlignment = Enum.TextXAlignment.Left
+    label.TextScaled = true
+    label.Font = Enum.Font.Gotham
+    label.Parent = rotFrame
+
+    local box = Instance.new("TextBox")
+    box.Size = UDim2.new(0.35, 0, 0, 30)
+    box.Position = UDim2.new(0.6, 0, yPos, 0)
+    box.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+    box.Text = tostring(default)
+    box.TextColor3 = Color3.fromRGB(255, 255, 255)
+    box.TextScaled = true
+    box.Font = Enum.Font.Gotham
+    box.Parent = rotFrame
+    Instance.new("UICorner", box).CornerRadius = UDim.new(0, 6)
+    return box
+end
+
+local xBox = createInput("X Pitch (Up/Down)", Color3.fromRGB(255, 60, 60), rotX, 0.42)
+local yBox = createInput("Y Yaw (Left/Right)", Color3.fromRGB(60, 255, 60), rotY, 0.53)
+local zBox = createInput("Z Roll (Tilt)", Color3.fromRGB(60, 140, 255), rotZ, 0.64)
+
+-- Axis Select for Freeze
+local axisFrame = Instance.new("Frame")
+axisFrame.Size = UDim2.new(0.9, 0, 0, 35)
+axisFrame.Position = UDim2.new(0.05, 0, 0.78, 0)
+axisFrame.BackgroundTransparency = 1
+axisFrame.Parent = rotFrame
+
+local xSel = Instance.new("TextButton")
+xSel.Size = UDim2.new(0.3, 0, 1, 0)
+xSel.Position = UDim2.new(0, 0, 0, 0)
+xSel.BackgroundColor3 = Color3.fromRGB(35,35,35)
+xSel.Text = "X"
+xSel.TextColor3 = Color3.fromRGB(255, 60, 60)
+xSel.TextScaled = true
+xSel.Font = Enum.Font.GothamBold
+xSel.Parent = axisFrame
+Instance.new("UICorner", xSel).CornerRadius = UDim.new(0,6)
+
+local ySel = Instance.new("TextButton")
+ySel.Size = UDim2.new(0.3, 0, 1, 0)
+ySel.Position = UDim2.new(0.35, 0, 0, 0)
+ySel.BackgroundColor3 = Color3.fromRGB(35,35,35)
+ySel.Text = "Y"
+ySel.TextColor3 = Color3.fromRGB(60, 255, 60)
+ySel.TextScaled = true
+ySel.Font = Enum.Font.GothamBold
+ySel.Parent = axisFrame
+Instance.new("UICorner", ySel).CornerRadius = UDim.new(0,6)
+
+local zSel = Instance.new("TextButton")
+zSel.Size = UDim2.new(0.3, 0, 1, 0)
+zSel.Position = UDim2.new(0.7, 0, 0, 0)
+zSel.BackgroundColor3 = Color3.fromRGB(35,35,35)
+zSel.Text = "Z"
+zSel.TextColor3 = Color3.fromRGB(60, 140, 255)
+zSel.TextScaled = true
+zSel.Font = Enum.Font.GothamBold
+zSel.Parent = axisFrame
+Instance.new("UICorner", zSel).CornerRadius = UDim.new(0,6)
+
+-- Freeze Speed Number Editor (0-100)
+local freezeSpeedLabel = Instance.new("TextLabel")
+freezeSpeedLabel.Size = UDim2.new(0.9, 0, 0, 25)
+freezeSpeedLabel.Position = UDim2.new(0.05, 0, 0.88, 0)
+freezeSpeedLabel.BackgroundTransparency = 1
+freezeSpeedLabel.Text = "Freeze Axis Speed (0-100)"
+freezeSpeedLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+freezeSpeedLabel.TextScaled = true
+freezeSpeedLabel.Font = Enum.Font.Gotham
+freezeSpeedLabel.Parent = rotFrame
+
+local freezeSpeedBox = Instance.new("TextBox")
+freezeSpeedBox.Size = UDim2.new(0.35, 0, 0, 30)
+freezeSpeedBox.Position = UDim2.new(0.6, 0, 0.88, 0)
+freezeSpeedBox.BackgroundColor3 = Color3.fromRGB(35, 35, 35)
+freezeSpeedBox.Text = tostring(freezeSpeed)
+freezeSpeedBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+freezeSpeedBox.TextScaled = true
+freezeSpeedBox.Font = Enum.Font.Gotham
+freezeSpeedBox.Parent = rotFrame
+Instance.new("UICorner", freezeSpeedBox).CornerRadius = UDim.new(0, 6)
+
+-- ================== FUNCTIONS ==================
 local function getOrCreateRemotes()
     local char = player.Character
     if not char then return nil, nil end
-    
-    local danceRemote = char:FindFirstChild("Dance")
-    if not danceRemote then
-        danceRemote = Instance.new("RemoteEvent")
-        danceRemote.Name = "Dance"
-        danceRemote.Parent = char
-    end
-    
-    local undanceRemote = char:FindFirstChild("UnDance")
-    if not undanceRemote then
-        undanceRemote = Instance.new("RemoteEvent")
-        undanceRemote.Name = "UnDance"
-        undanceRemote.Parent = char
-    end
-    
+    local danceRemote = char:FindFirstChild("Dance") or Instance.new("RemoteEvent")
+    danceRemote.Name = "Dance"; danceRemote.Parent = char
+    local undanceRemote = char:FindFirstChild("UnDance") or Instance.new("RemoteEvent")
+    undanceRemote.Name = "UnDance"; undanceRemote.Parent = char
     return danceRemote, undanceRemote
 end
 
--- Toggle Function
+local function applyRotationFix(char)
+    rootPart = char:FindFirstChild("HumanoidRootPart")
+    humanoid = char:FindFirstChild("Humanoid")
+    if not rootPart or not humanoid then return end
+    humanoid.AutoRotate = false
+    humanoid.PlatformStand = true
+    humanoid:ChangeState(Enum.HumanoidStateType.Physics)
+    rootPart.CanCollide = false
+    -- Extra mid-air stability
+    rootPart.AssemblyLinearVelocity = Vector3.new(0, rootPart.AssemblyLinearVelocity.Y, 0)
+end
+
+local function updateAxisSelection()
+    xSel.BackgroundColor3 = (selectedAxis == "X" and Color3.fromRGB(80,80,80) or Color3.fromRGB(35,35,35))
+    ySel.BackgroundColor3 = (selectedAxis == "Y" and Color3.fromRGB(80,80,80) or Color3.fromRGB(35,35,35))
+    zSel.BackgroundColor3 = (selectedAxis == "Z" and Color3.fromRGB(80,80,80) or Color3.fromRGB(35,35,35))
+end
+
+local function startRotation(char)
+    if rotationConnection then rotationConnection:Disconnect() end
+    applyRotationFix(char)
+    accumulatedRot = Vector3.new(0, 0, 0)
+    
+    rotationConnection = game:GetService("RunService").Stepped:Connect(function(dt)
+        if not (dancing and isRotating and rootPart) then return end
+        
+        local delta = Vector3.new(0, 0, 0)
+        if isFrozen then
+            -- Freeze: ONLY rotate the SELECTED axis at freezeSpeed. Others stay frozen.
+            if selectedAxis == "X" then
+                delta = Vector3.new(freezeSpeed, 0, 0) * dt
+            elseif selectedAxis == "Y" then
+                delta = Vector3.new(0, freezeSpeed, 0) * dt
+            elseif selectedAxis == "Z" then
+                delta = Vector3.new(0, 0, freezeSpeed) * dt
+            end
+        else
+            -- Normal mode: all axes
+            delta = Vector3.new(rotX, rotY, rotZ) * dt
+        end
+        
+        accumulatedRot += delta
+        local pos = rootPart.Position
+        local newCFrame = CFrame.new(pos) * CFrame.Angles(math.rad(accumulatedRot.X), math.rad(accumulatedRot.Y), math.rad(accumulatedRot.Z))
+        rootPart.CFrame = newCFrame
+    end)
+end
+
+local function stopRotation()
+    if rotationConnection then
+        rotationConnection:Disconnect()
+        rotationConnection = nil
+    end
+    if humanoid then
+        humanoid.AutoRotate = true
+        humanoid.PlatformStand = false
+        humanoid:ChangeState(Enum.HumanoidStateType.Running)
+    end
+    if rootPart then rootPart.CanCollide = true end
+    accumulatedRot = Vector3.new(0, 0, 0)
+end
+
 local function toggleDance()
     dancing = not dancing
     local danceRemote, undanceRemote = getOrCreateRemotes()
     
     if dancing then
-        if not danceRemote then
-            toggleButton.Text = "ERROR"
-            dancing = false
-            return
-        end
-        
         toggleButton.Text = "ON"
         toggleButton.BackgroundColor3 = Color3.fromRGB(0, 190, 0)
         status.Text = "Dancing... (All Classes)"
-        
-        -- Fire remote for server sync + sound
         danceRemote:FireServer()
         
-        -- Load real Assassin Dance animation
         local char = player.Character
-        local humanoid = char and char:WaitForChild("Humanoid", 2)
-        if humanoid then
+        if char then
+            humanoid = char:WaitForChild("Humanoid", 2)
+            rootPart = char:WaitForChild("HumanoidRootPart", 2)
             local success, track = pcall(function()
                 local anim = game.ReplicatedStorage.Animations:WaitForChild("Assassin Dance")
                 return humanoid:LoadAnimation(anim)
             end)
-            
             if success and track then
                 danceTrack = track
                 danceTrack:Play()
                 danceTrack.Looped = true
                 danceTrack:AdjustSpeed(currentSpeed)
-            else
-                status.Text = "Animation not found!"
             end
         end
+        if isRotating then startRotation(char) end
         
-        -- Keep spamming remote
-        if danceConnection then
-            danceConnection:Disconnect()
-        end
+        if danceConnection then danceConnection:Disconnect() end
         danceConnection = game:GetService("RunService").Heartbeat:Connect(function()
-            if dancing and danceRemote then
-                danceRemote:FireServer()
-            end
+            if dancing and danceRemote then danceRemote:FireServer() end
         end)
-        
     else
         toggleButton.Text = "OFF"
         toggleButton.BackgroundColor3 = Color3.fromRGB(200, 0, 0)
         status.Text = "Stopped"
-        
-        if danceConnection then
-            danceConnection:Disconnect()
-            danceConnection = nil
-        end
-        
-        if danceTrack then
-            danceTrack:Stop()
-            danceTrack = nil
-        end
-        
-        if undanceRemote then
-            undanceRemote:FireServer()
-        end
+        if danceConnection then danceConnection:Disconnect() end
+        stopRotation()
+        if danceTrack then danceTrack:Stop() end
+        if undanceRemote then undanceRemote:FireServer() end
     end
 end
 
+-- ================== CONNECTIONS ==================
 toggleButton.MouseButton1Click:Connect(toggleDance)
+settingsBtn.MouseButton1Click:Connect(function() rotFrame.Visible = not rotFrame.Visible end)
 
--- Minimize logic
-minimizeBtn.MouseButton1Click:Connect(function()
-    mainFrameVisible = false
-    frame.Visible = false
-    miniButton.Visible = true
+rotToggle.MouseButton1Click:Connect(function()
+    isRotating = not isRotating
+    rotToggle.Text = "Rotation: " .. (isRotating and "ON" or "OFF")
+    rotToggle.BackgroundColor3 = isRotating and Color3.fromRGB(0, 190, 0) or Color3.fromRGB(60, 60, 60)
+    if dancing then
+        if isRotating then startRotation(player.Character) else stopRotation() end
+    end
 end)
 
-miniButton.MouseButton1Click:Connect(function()
-    mainFrameVisible = true
-    frame.Visible = true
-    miniButton.Visible = false
+freezeToggle.MouseButton1Click:Connect(function()
+    isFrozen = not isFrozen
+    freezeToggle.Text = "Freeze Mode: " .. (isFrozen and "ON" or "OFF")
+    freezeToggle.BackgroundColor3 = isFrozen and Color3.fromRGB(0, 190, 0) or Color3.fromRGB(60, 60, 60)
+    if dancing and isRotating then
+        startRotation(player.Character)  -- Restart to apply freeze
+    end
 end)
 
-closeBtn.MouseButton1Click:Connect(function()
-    screenGui:Destroy()
+xSel.MouseButton1Click:Connect(function() selectedAxis = "X"; updateAxisSelection() end)
+ySel.MouseButton1Click:Connect(function() selectedAxis = "Y"; updateAxisSelection() end)
+zSel.MouseButton1Click:Connect(function() selectedAxis = "Z"; updateAxisSelection() end)
+
+xBox.FocusLost:Connect(function() rotX = tonumber(xBox.Text) or 0; xBox.Text = tostring(rotX) end)
+yBox.FocusLost:Connect(function() rotY = tonumber(yBox.Text) or 0; yBox.Text = tostring(rotY) end)
+zBox.FocusLost:Connect(function() rotZ = tonumber(zBox.Text) or 0; zBox.Text = tostring(rotZ) end)
+
+freezeSpeedBox.FocusLost:Connect(function()
+    local num = tonumber(freezeSpeedBox.Text)
+    if num then
+        freezeSpeed = math.clamp(math.floor(num), 0, 100)
+        freezeSpeedBox.Text = tostring(freezeSpeed)
+        -- If currently frozen and dancing, refresh
+        if dancing and isRotating and isFrozen then
+            startRotation(player.Character)
+        end
+    end
 end)
 
--- Respawn handling (improved)
+speedBox.FocusLost:Connect(function()
+    local num = tonumber(speedBox.Text)
+    if num then 
+        currentSpeed = num
+        speedBox.Text = tostring(currentSpeed)
+        if danceTrack and dancing then danceTrack:AdjustSpeed(currentSpeed) end
+    end
+end)
+
+minimizeBtn.MouseButton1Click:Connect(function() frame.Visible = false; miniButton.Visible = true end)
+miniButton.MouseButton1Click:Connect(function() frame.Visible = true; miniButton.Visible = false end)
+closeBtn.MouseButton1Click:Connect(function() screenGui:Destroy(); rotationGui:Destroy() end)
+
 player.CharacterAdded:Connect(function()
     task.wait(1.5)
-    local char = player.Character
-    if not char then return end
-    
     if dancing then
-        -- Re-toggle to restart properly on new character
         dancing = false
-        if danceConnection then
-            danceConnection:Disconnect()
-            danceConnection = nil
-        end
-        if danceTrack then
-            danceTrack:Stop()
-            danceTrack = nil
-        end
+        if danceConnection then danceConnection:Disconnect() end
+        if danceTrack then danceTrack:Stop() end
+        stopRotation()
         task.wait(0.3)
-        toggleDance()  -- turn back on
+        toggleDance()
     end
 end)
 
--- Cleanup on character removing
 player.CharacterRemoving:Connect(function()
-    if danceConnection then
-        danceConnection:Disconnect()
-        danceConnection = nil
-    end
-    if danceTrack then
-        danceTrack:Stop()
-        danceTrack = nil
+    if danceConnection then danceConnection:Disconnect() end
+    if rotationConnection then rotationConnection:Disconnect() end
+    if danceTrack then danceTrack:Stop() end
+    if humanoid then 
+        humanoid.AutoRotate = true
+        humanoid.PlatformStand = false
     end
 end)
 
-print("✅ Universal Assassin Dance GUI Loaded! (Auto creates remotes + Speed Control + Minimize)")
+updateAxisSelection()
+print("✅ Universal Assassin Dance GUI Loaded! (Freeze FIXED + TextBox + Mid-Air)")
